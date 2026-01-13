@@ -1,40 +1,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { AiService } from './ai.service';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-jest.mock('@google/generative-ai');
+import { AI_PROVIDER } from './interfaces/ai-provider.interface';
 
 describe('AiService', () => {
     let service: AiService;
-    let configService: ConfigService;
-
-    const mockConfigService = {
-        get: jest.fn().mockReturnValue('fake-api-key'),
-    };
-
-    const mockGenerateContent = jest.fn();
-    const mockGetGenerativeModel = jest.fn().mockReturnValue({
-        generateContent: mockGenerateContent,
-    });
+    let mockAiProvider: any;
 
     beforeEach(async () => {
-        (GoogleGenerativeAI as jest.Mock).mockImplementation(() => ({
-            getGenerativeModel: mockGetGenerativeModel,
-        }));
+        mockAiProvider = {
+            analyzeLead: jest.fn(),
+        };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 AiService,
                 {
-                    provide: ConfigService,
-                    useValue: mockConfigService,
+                    provide: AI_PROVIDER,
+                    useValue: mockAiProvider,
                 },
             ],
         }).compile();
 
         service = module.get<AiService>(AiService);
-        configService = module.get<ConfigService>(ConfigService);
     });
 
     it('should be defined', () => {
@@ -42,22 +29,18 @@ describe('AiService', () => {
     });
 
     describe('analyzeLead', () => {
-        it('should return fitScore and intent from AI response', async () => {
-            const mockResponse = {
-                response: {
-                    text: () => JSON.stringify({ fitScore: 85, intent: 'High Interest' }),
-                },
-            };
-            mockGenerateContent.mockResolvedValue(mockResponse);
+        it('should return fitScore and intent from AI provider', async () => {
+            const mockResponse = { fitScore: 85, intent: 'High Interest' };
+            mockAiProvider.analyzeLead.mockResolvedValue(mockResponse);
 
             const result = await service.analyzeLead({ email: 'test@test.com' });
 
-            expect(result).toEqual({ fitScore: 85, intent: 'High Interest' });
-            expect(mockGetGenerativeModel).toHaveBeenCalledWith({ model: 'gemini-1.5-flash' });
+            expect(result).toEqual(mockResponse);
+            expect(mockAiProvider.analyzeLead).toHaveBeenCalledWith({ email: 'test@test.com' });
         });
 
-        it('should return fallback values if AI fails', async () => {
-            mockGenerateContent.mockRejectedValue(new Error('AI Error'));
+        it('should return fallback values if AI provider fails', async () => {
+            mockAiProvider.analyzeLead.mockRejectedValue(new Error('AI Provider Error'));
 
             const result = await service.analyzeLead({ email: 'test@test.com' });
 
