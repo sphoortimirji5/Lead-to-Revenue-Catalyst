@@ -29,6 +29,18 @@ export class Lead {
     @Column({ nullable: true })
     intent: string;
 
+    @Column({ type: 'text', nullable: true })
+    reasoning: string;
+
+    @Column({ type: 'jsonb', nullable: true })
+    evidence: any;
+
+    @Column({ type: 'varchar', nullable: true })
+    grounding_status: string | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    grounding_errors: string[] | null;
+
     @CreateDateColumn()
     createdAt: Date;
 

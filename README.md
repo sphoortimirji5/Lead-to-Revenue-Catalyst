@@ -13,9 +13,10 @@
 
 | Environment | Purpose | Stack Highlights | Documentation |
 | :--- | :--- | :--- | :--- |
-| **Local** | Validation & Testing | Postgres, Redis, Gemini 2.0 | [Local Stack](docs/local-stack.md) |
-| **Production** | Live Revenue Flow | AWS (ECS, RDS, ElastiCache) | [Production Stack](docs/production-stack.md) |
+| **Local** | Validation & Testing | Postgres, Redis, Gemini 2.0 | [Local Stack](docs/local-stack.md), [Testing](docs/testing.md) |
+| **Production** | Live Revenue Flow | AWS (ECS, RDS, ElastiCache) | [Production Stack](docs/production-stack.md), [Security](docs/security.md) |
 | **Migration** | Mock → Real | Provider Pattern, Rollback Plan | [Migration Guide](docs/migration.md) |
+| **AI Safety** | Guardrails & Verification | Grounding Contract, Enrichment | [AI Grounding](docs/ai_grounding.md) |
 
 ## Architecture
 
@@ -45,6 +46,8 @@ graph LR
     P -.->|ENV=REAL| API
 ```
 
+**The Flow**: Leads flow through ingestion → async processing → AI analysis → grounding validation → CRM sync. AI outputs are accepted only after grounding validation succeeds or safely downgrades the result. All decisions and evidence are persisted for audit and replay.
+
 The system maintains state in **PostgreSQL** (audit/idempotency) and **Redis** (queue state). The critical **async boundary** is between the Webhook Controller and the AI Enrichment Worker, ensuring that slow AI inference or CRM sync never blocks the ingestion of new leads.
 
 ## Key Design Decisions
@@ -58,7 +61,16 @@ The system maintains state in **PostgreSQL** (audit/idempotency) and **Redis** (
 - **Ingestion Optimization**: Ingestion path optimized for fast ACK, not throughput guarantees.
 - **Latency Profile**: AI inference dominates p95 latency under load.
 - **Ordering**: Ordering guarantees are scoped to `(email, campaign_id)`, not global.
-- **Persistence**: Redis is single-region; multi-region durability would require replication or Kafka.
+- **Persistence**: Redis is single-region; multi-region durability would require replication or configuration changes.
+
+## AI Guardrails & Grounding (New)
+
+To prevent hallucinations and ensuring business safety, the system implements a strict **Grounding Contract**:
+1.  **Source of Truth**: The AI cannot introduce new firmographic facts. It must verify claims against the `EnrichmentProvider` (e.g., Clearbit, ZoomInfo).
+2.  **Evidence-Based**: Every non-trivial claim (Industry, Intent) must be backed by explicit evidence from trusted sources (`Salesforce`, `Marketo`, `Product`).
+3.  **Fail Secure**: If the AI hallucinates or cites unauthorized sources (e.g., "Web Search"), the result is **hard rejected**.
+
+See [AI Grounding](docs/ai_grounding.md) and [Security Model](docs/security.md) for details.
 
 ## Failure Modes
 

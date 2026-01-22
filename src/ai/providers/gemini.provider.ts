@@ -3,11 +3,20 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { z } from 'zod';
 import { Lead } from '../../leads/lead.entity';
-import { AiProvider, AiAnalysisResult } from '../interfaces/ai-provider.interface';
+import { AiProvider, AiAnalysisResult, LeadIntent, LeadDecision, GroundingSource } from '../interfaces/ai-provider.interface';
+import { CompanyData } from '../../enrichment/enrichment.service';
 
 const AiResponseSchema = z.object({
     fitScore: z.number().min(0).max(100),
-    intent: z.string().min(1),
+    intent: z.nativeEnum(LeadIntent),
+    decision: z.nativeEnum(LeadDecision),
+    reasoning: z.string().min(10),
+    evidence: z.array(z.object({
+        source: z.nativeEnum(GroundingSource),
+        field: z.string(),
+        value: z.any(),
+        claim_type: z.enum(['FIRMOGRAPHIC', 'BEHAVIOR', 'PIPELINE', 'SCORE']),
+    })),
 });
 
 @Injectable()
@@ -34,11 +43,30 @@ export class GeminiProvider implements AiProvider {
                 - Technical Intent: Look for technical keywords in names or enrichment data.
                 - Buying Power: Prioritize domains from Fortune 500 or high-growth startups.
                 
-                OUTPUT:
-                Return ONLY a JSON object:
+                GROUNDING CONTRACT - STRICT ENFORCEMENT:
+                1. AI outputs are accepted ONLY if every non-trivial claim is backed by explicit evidence.
+                2. FIRMOGRAPHIC claims (Industry, Size, Tech Stack) MUST cite source: "${GroundingSource.ENRICHMENT}".
+                   - IF Enrichment data is NOT provided, you are FORBIDDEN from making firmographic claims.
+                3. BEHAVIOR claims (Campaign, Usage) MUST cite source: "${GroundingSource.MARKETO}" or "${GroundingSource.PRODUCT}".
+                4. PIPELINE/REVENUE claims MUST cite source: "${GroundingSource.SALESFORCE}" or "${GroundingSource.COMPUTED}".
+                
+                VALID INTENTS: ${Object.values(LeadIntent).join(', ')}
+                VALID DECISIONS: ${Object.values(LeadDecision).join(', ')}
+
+                OUTPUT FORMAT (JSON ONLY):
                 {
                   "fitScore": number (0-100),
-                  "intent": "string (max 5 words)"
+                  "intent": "Enum Value",
+                  "decision": "Enum Value",
+                  "reasoning": "Explanation referencing evidence",
+                  "evidence": [
+                    {
+                      "source": "Enum Value",
+                      "field": "Field Name (e.g., industry, campaign_id)",
+                      "value": "Exact Value from Input",
+                      "claim_type": "FIRMOGRAPHIC" | "BEHAVIOR" | "PIPELINE" | "SCORE"
+                    }
+                  ]
                 }
             `,
             generationConfig: {
@@ -47,9 +75,14 @@ export class GeminiProvider implements AiProvider {
         });
     }
 
-    async analyzeLead(leadData: Partial<Lead>): Promise<AiAnalysisResult> {
+    async analyzeLead(leadData: Partial<Lead>, enrichmentData?: CompanyData | null): Promise<AiAnalysisResult> {
         try {
-            const prompt = `Analyze this lead: ${JSON.stringify(leadData)}`;
+            const contextPayload = {
+                lead: leadData,
+                enrichment: enrichmentData || 'NOT_AVAILABLE'
+            };
+
+            const prompt = `Analyze this lead context: ${JSON.stringify(contextPayload)}`;
             const result = await this.model.generateContent(prompt);
             const responseText = result.response.text().trim();
 
@@ -60,7 +93,7 @@ export class GeminiProvider implements AiProvider {
             return AiResponseSchema.parse(JSON.parse(jsonMatch[0]));
         } catch (error) {
             this.logger.error(`AI_ANALYSIS_ERROR: ${error.message}`, { leadEmail: leadData.email });
-            return { fitScore: 50, intent: 'Manual Review Required' };
+            throw error; // Service handles fallback
         }
     }
 }

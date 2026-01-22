@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { metricsProviders } from '../common/metrics.providers';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { AiService } from './ai.service';
@@ -7,12 +8,14 @@ import { Lead } from '../leads/lead.entity';
 import { CrmModule } from '../crm/crm.module';
 import { AI_PROVIDER } from './interfaces/ai-provider.interface';
 import { GeminiProvider } from './providers/gemini.provider';
+import { EnrichmentModule } from '../enrichment/enrichment.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Lead]),
     ConfigModule,
     CrmModule,
+    EnrichmentModule,
   ],
   providers: [
     AiService,
@@ -21,6 +24,7 @@ import { GeminiProvider } from './providers/gemini.provider';
       provide: AI_PROVIDER,
       useClass: GeminiProvider,
     },
+    ...metricsProviders,
   ],
   exports: [AiService],
 })
