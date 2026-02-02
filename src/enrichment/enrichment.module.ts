@@ -4,13 +4,13 @@ import { MockEnrichmentProvider } from './providers/mock.provider';
 import { ENRICHMENT_PROVIDER } from './interfaces/enrichment-provider.interface';
 
 @Module({
-    providers: [
-        EnrichmentService,
-        {
-            provide: ENRICHMENT_PROVIDER,
-            useClass: MockEnrichmentProvider,
-        },
-    ],
-    exports: [EnrichmentService],
+  providers: [
+    EnrichmentService,
+    {
+      provide: ENRICHMENT_PROVIDER,
+      useClass: MockEnrichmentProvider,
+    },
+  ],
+  exports: [EnrichmentService],
 })
-export class EnrichmentModule { }
+export class EnrichmentModule {}

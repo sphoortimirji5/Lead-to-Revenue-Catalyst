@@ -19,9 +19,11 @@ This document details the enterprise-grade production stack for **RevenueFlow AI
 ### 5. Secrets & Config
 - **AWS Secrets Manager**: Secure storage and rotation of API keys (Salesforce, Bedrock) and database credentials.
 
-### 6. Observability
-- **Amazon CloudWatch**: Centralized logging and metrics.
-- **Datadog (Optional)**: For advanced APM and distributed tracing.
+### 6. Observability (LGTM Stack)
+- **Loki**: Log aggregation (via Promtail sidecar on ECS)
+- **Grafana**: Dashboards, alerting, and log exploration
+- **Prometheus**: Metrics collection and alerting
+- **Jaeger**: Distributed tracing
 
 ## Security
 - **IAM Boundaries**: Least-privilege access for ECS tasks to RDS, ElastiCache, and Secrets Manager.
@@ -33,3 +35,23 @@ This document details the enterprise-grade production stack for **RevenueFlow AI
 - **Worker Concurrency**: Adjustable via environment variables to match downstream API capacity.
 - **Queue Depth Alarms**: CloudWatch alarms trigger Fargate task scaling when the BullMQ backlog grows.
 - **Autoscaling Triggers**: CPU/Memory based scaling for the API layer; Queue-depth based scaling for the Worker layer.
+
+## MCP Environment Configuration
+
+The MCP layer connects to real CRM APIs in production with credentials managed by AWS Secrets Manager.
+
+**Environment variables (via ECS Task Definition):**
+```
+CRM_PROVIDER=SALESFORCE        # or HUBSPOT
+REDIS_URL=redis://elasticache-cluster:6379
+AWS_REGION=us-west-2
+# CRM credentials retrieved from AWS Secrets Manager at runtime
+```
+
+| Component | Production Behavior |
+|-----------|---------------------|
+| CRM Executor | `SalesforceExecutor` or `HubSpotExecutor` |
+| Rate Limiting | Redis-backed (ElastiCache) |
+| Idempotency | Redis with TTL |
+| Circuit Breaker | Opossum (in-process) |
+| Credentials | AWS Secrets Manager (auto-rotated) |

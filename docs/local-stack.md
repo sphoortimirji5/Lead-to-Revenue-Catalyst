@@ -32,3 +32,21 @@ The local stack is designed to validate:
 - **Real Rate Limits**: Local mocks do not simulate Salesforce or AI API rate limits.
 - **Multi-AZ Failures**: The stack runs as a single instance.
 - **Real Latency/SLOs**: Performance metrics in Docker Desktop do not reflect AWS production latencies.
+
+## MCP Environment Configuration
+
+The MCP layer uses mock executors locally to simulate CRM interactions without external dependencies.
+
+**Required .env variables:**
+```
+CRM_PROVIDER=MOCK
+REDIS_URL=          # Empty = uses in-memory fallback for rate limiting/idempotency
+```
+
+| Component | Local Behavior |
+|-----------|----------------|
+| CRM Executor | `MockMCPExecutor` - persists to Postgres `crm_sync_logs` |
+| Rate Limiting | In-memory (no Redis required) |
+| Idempotency | In-memory fallback |
+| Circuit Breaker | Opossum (in-process) |
+| Credentials | None required |

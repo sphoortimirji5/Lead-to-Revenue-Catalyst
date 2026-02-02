@@ -8,7 +8,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { LeadsModule } from './leads/leads.module';
 import { AiModule } from './ai/ai.module';
-import { CrmModule } from './crm/crm.module';
 
 @Module({
   imports: [
@@ -17,9 +16,10 @@ import { CrmModule } from './crm/crm.module';
     }),
     LoggerModule.forRoot({
       pinoHttp: {
-        transport: process.env.NODE_ENV !== 'production'
-          ? { target: 'pino-pretty', options: { colorize: true } }
-          : undefined,
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? { target: 'pino-pretty', options: { colorize: true } }
+            : undefined,
         redact: ['[*].email', '[*].phone', '[*].password'],
       },
     }),
@@ -29,7 +29,9 @@ import { CrmModule } from './crm/crm.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        type: configService.get<any>('DB_TYPE') || 'postgres',
+        type: (configService.get<string>('DB_TYPE') || 'postgres') as
+          | 'postgres'
+          | 'sqlite',
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
         synchronize: true, // Only for development
@@ -48,9 +50,8 @@ import { CrmModule } from './crm/crm.module';
     }),
     LeadsModule,
     AiModule,
-    CrmModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

@@ -44,7 +44,7 @@ The system uses **multi-window burn rate alerts** to catch SLO violations before
 
 ### 1. Structured Logging
 The application uses `nestjs-pino` for high-performance, structured JSON logging.
-- **Production**: Logs are emitted as JSON for easy ingestion by ELK/Splunk/Datadog.
+- **Production**: Logs are emitted as JSON for ingestion by **Loki** via Promtail.
 - **Local**: Logs are prettified using `pino-pretty` for readability.
 - **PII Redaction**: Email, Phone, and Password fields are automatically redacted from logs.
 
@@ -54,8 +54,8 @@ Metrics are exposed via Prometheus format at the `/metrics` endpoint.
 - **AI Latency**: A histogram `ai_analysis_duration_seconds` tracks how long AI enrichment takes.
 
 ### 3. Monitoring Access
-- **Logs**: View via standard output or log management system.
-- **Metrics**: `GET /metrics`
+- **Logs**: Loki (via Grafana) or stdout locally
+- **Metrics**: `GET /metrics` (Prometheus scrape)
 
 ## Dashboards (Recommended)
 We recommend creating a Grafana dashboard with the following panels:
@@ -71,7 +71,7 @@ We recommend creating a Grafana dashboard with the following panels:
 | Aspect | Local | Production |
 | :--- | :--- | :--- |
 | **Log Format** | Pretty-printed (colorized) | Structured JSON |
-| **Log Destination** | Terminal (stdout) | Log aggregator (ELK, Datadog, Splunk) |
+| **Log Destination** | Terminal (stdout) | **Loki** (via Promtail) |
 | **Metrics Access** | `curl localhost:3000/metrics` | Prometheus scrape target |
 | **PII Redaction** | Enabled | Enabled |
 

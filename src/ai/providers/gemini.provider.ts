@@ -3,34 +3,42 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { z } from 'zod';
 import { Lead } from '../../leads/lead.entity';
-import { AiProvider, AiAnalysisResult, LeadIntent, LeadDecision, GroundingSource } from '../interfaces/ai-provider.interface';
+import {
+  AiProvider,
+  AiAnalysisResult,
+  LeadIntent,
+  LeadDecision,
+  GroundingSource,
+} from '../interfaces/ai-provider.interface';
 import { CompanyData } from '../../enrichment/enrichment.service';
 
 const AiResponseSchema = z.object({
-    fitScore: z.number().min(0).max(100),
-    intent: z.nativeEnum(LeadIntent),
-    decision: z.nativeEnum(LeadDecision),
-    reasoning: z.string().min(10),
-    evidence: z.array(z.object({
-        source: z.nativeEnum(GroundingSource),
-        field: z.string(),
-        value: z.any(),
-        claim_type: z.enum(['FIRMOGRAPHIC', 'BEHAVIOR', 'PIPELINE', 'SCORE']),
-    })),
+  fitScore: z.number().min(0).max(100),
+  intent: z.nativeEnum(LeadIntent),
+  decision: z.nativeEnum(LeadDecision),
+  reasoning: z.string().min(10),
+  evidence: z.array(
+    z.object({
+      source: z.nativeEnum(GroundingSource),
+      field: z.string(),
+      value: z.any(),
+      claim_type: z.enum(['FIRMOGRAPHIC', 'BEHAVIOR', 'PIPELINE', 'SCORE']),
+    }),
+  ),
 });
 
 @Injectable()
 export class GeminiProvider implements AiProvider {
-    private readonly logger = new Logger(GeminiProvider.name);
-    private model: GenerativeModel;
+  private readonly logger = new Logger(GeminiProvider.name);
+  private model: GenerativeModel;
 
-    constructor(private configService: ConfigService) {
-        const genAI = new GoogleGenerativeAI(
-            this.configService.get<string>('GEMINI_API_KEY') || '',
-        );
-        this.model = genAI.getGenerativeModel({
-            model: 'gemini-2.0-flash',
-            systemInstruction: `
+  constructor(private configService: ConfigService) {
+    const genAI = new GoogleGenerativeAI(
+      this.configService.get<string>('GEMINI_API_KEY') || '',
+    );
+    this.model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      systemInstruction: `
                 PROTOTYPE NOTICE: This prompt is for initial validation. 
                 Production environments MUST use the "Augmented Context Pipelines" 
                 (RAG + Few-Shot) described in the README to ensure accuracy.
@@ -69,31 +77,38 @@ export class GeminiProvider implements AiProvider {
                   ]
                 }
             `,
-            generationConfig: {
-                responseMimeType: "application/json",
-            }
-        });
+      generationConfig: {
+        responseMimeType: 'application/json',
+      },
+    });
+  }
+
+  async analyzeLead(
+    leadData: Partial<Lead>,
+    enrichmentData?: CompanyData | null,
+  ): Promise<AiAnalysisResult> {
+    try {
+      const contextPayload = {
+        lead: leadData,
+        enrichment: enrichmentData || 'NOT_AVAILABLE',
+      };
+
+      const prompt = `Analyze this lead context: ${JSON.stringify(contextPayload)}`;
+      const result = await this.model.generateContent(prompt);
+      const responseText = result.response.text().trim();
+
+      // Robust JSON extraction for production safety
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('No JSON object found in response');
+
+      return AiResponseSchema.parse(JSON.parse(jsonMatch[0]));
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`AI_ANALYSIS_ERROR: ${errorMessage}`, {
+        leadEmail: leadData.email,
+      });
+      throw error; // Service handles fallback
     }
-
-    async analyzeLead(leadData: Partial<Lead>, enrichmentData?: CompanyData | null): Promise<AiAnalysisResult> {
-        try {
-            const contextPayload = {
-                lead: leadData,
-                enrichment: enrichmentData || 'NOT_AVAILABLE'
-            };
-
-            const prompt = `Analyze this lead context: ${JSON.stringify(contextPayload)}`;
-            const result = await this.model.generateContent(prompt);
-            const responseText = result.response.text().trim();
-
-            // Robust JSON extraction for production safety
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error('No JSON object found in response');
-
-            return AiResponseSchema.parse(JSON.parse(jsonMatch[0]));
-        } catch (error) {
-            this.logger.error(`AI_ANALYSIS_ERROR: ${error.message}`, { leadEmail: leadData.email });
-            throw error; // Service handles fallback
-        }
-    }
+  }
 }
