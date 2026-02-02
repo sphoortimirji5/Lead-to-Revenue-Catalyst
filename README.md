@@ -105,5 +105,9 @@ See [AI Grounding](docs/ai_grounding.md) and [Security Model](docs/security.md) 
      -d '{"email": "lead@enterprise.com", "name": "Alex Smith", "campaign_id": "launch_2024"}'
    ```
 
+## Future Work
+
+- **MCP Layer**: Post-grounding Model Context Protocol for safe, auditable CRM actions with multi-CRM support (Salesforce/HubSpot). See [MCP Implementation Plan](docs/mcp-implementation-plan.md).
+
 ---
 This project intentionally separates validation (local) from constraints (production).
