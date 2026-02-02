@@ -42,10 +42,12 @@ The MCP layer connects to real CRM APIs in production with credentials managed b
 
 **Environment variables (via ECS Task Definition):**
 ```
-CRM_PROVIDER=SALESFORCE        # or HUBSPOT
-REDIS_URL=redis://elasticache-cluster:6379
+NODE_ENV=production
+CRM_PROVIDER=SALESFORCE
+DATABASE_URL=postgres://...@mcp-database-prod.xxx.rds.amazonaws.com:5432/revenueflow
+REDIS_URL=redis://mcp-redis-prod.xxx.cache.amazonaws.com:6379
 AWS_REGION=us-west-2
-# CRM credentials retrieved from AWS Secrets Manager at runtime
+# CRM and database credentials retrieved from AWS Secrets Manager at runtime
 ```
 
 | Component | Production Behavior |

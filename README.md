@@ -56,35 +56,40 @@ flowchart TB
         T[Tool Registry<br/>14 Safe CRM Operations]
     end
 
+    subgraph Storage["Data Layer"]
+        DB[(PostgreSQL / RDS<br/>Leads + Audit)]
+        REDIS[(Redis / ElastiCache<br/>Queue + Idempotency)]
+    end
+
     subgraph CRM["CRM Providers"]
         P{Provider Switch}
-        MOCK[(Mock Executor<br/>Postgres)]
+        MOCK[Mock Executor]
         SF[Salesforce API]
     end
 
     subgraph Observability["Observability"]
         MET[Prometheus Metrics]
         LOG[Structured Logs]
-        AUDIT[Audit Trail]
     end
 
     M --> C
+    C --> DB
     C --> Q
     Q --> E
     E --> AI
     AI --> G
     G -->|VALID| S
-    G -->|REJECTED| AUDIT
+    G -->|REJECTED| DB
     S --> R
     R --> CB
     CB --> T
     T --> P
     P -->|Local/Dev| MOCK
     P -->|Production| SF
-    P -->|Future| HS
+    MOCK --> DB
     T -.-> MET
     T -.-> LOG
-    T -.-> AUDIT
+    T -.-> DB
 ```
 
 ### Data Flow
@@ -191,89 +196,8 @@ flowchart LR
 
 ---
 
-## Environment Configuration
 
-### Local Development
 
-For development and testing without real CRM credentials:
-
-```bash
-# .env
-NODE_ENV=development
-CRM_PROVIDER=MOCK
-REDIS_URL=redis://localhost:6379
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/revenueflow
-GEMINI_API_KEY=your_gemini_key
-```
-
-**Stack**: Postgres (Docker), Redis (Docker), Gemini 2.0 Flash, Mock CRM
-
-**Docs**: [Local Stack Guide](docs/local-stack.md) | [Testing Guide](docs/testing.md)
-
-### Production
-
-Enterprise-grade deployment on AWS:
-
-```bash
-# Environment variables (credentials via AWS Secrets Manager)
-NODE_ENV=production
-CRM_PROVIDER=SALESFORCE
-REDIS_URL=redis://elasticache-cluster.cache.amazonaws.com:6379
-DATABASE_URL=postgres://...rds.amazonaws.com/revenueflow
-AWS_REGION=us-west-2
-```
-
-**Stack**: ECS Fargate, RDS PostgreSQL, ElastiCache Redis, Bedrock, Salesforce API
-
-**Docs**: [Production Stack](docs/production-stack.md) | [Security Model](docs/security.md) | [Migration Guide](docs/migration.md)
-
----
-
-## Quick Start
-
-### Prerequisites
-- Docker & Docker Compose
-- Node.js 18+
-- Gemini API key (for local)
-
-### 1. Start Infrastructure
-```bash
-docker-compose up -d
-```
-
-### 2. Install & Configure
-```bash
-npm install
-cp .env.example .env
-# Edit .env with your GEMINI_API_KEY
-```
-
-### 3. Run Application
-```bash
-npm run start:dev
-```
-
-### 4. Test the Flow
-```bash
-curl -X POST http://localhost:3000/leads \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "cto@stripe.com",
-    "name": "Alex Smith",
-    "campaign_id": "launch_2024"
-  }'
-```
-
-### 5. Verify Processing
-```bash
-# Check lead status
-curl http://localhost:3000/leads/1
-
-# View metrics
-curl http://localhost:3000/metrics
-```
-
----
 
 ## Documentation Index
 
@@ -284,12 +208,11 @@ curl http://localhost:3000/metrics
 | [Testing](docs/testing.md) | Unit, integration, and E2E testing |
 | [Migration Guide](docs/migration.md) | Moving from mock to real CRM |
 
-### Architecture & Design
+### Architecture and Design
 | Document | Purpose |
 |----------|---------|
 | [AI Grounding](docs/ai_grounding.md) | Evidence-based AI validation contract |
 | [MCP Implementation](docs/mcp-implementation-plan.md) | Model Context Protocol deep dive |
-| [MCP Monitoring](docs/mcp-monitoring.md) | Metrics, alerts, and dashboards |
 
 ### Production
 | Document | Purpose |
@@ -300,21 +223,6 @@ curl http://localhost:3000/metrics
 
 ---
 
-## Key Metrics
-
-### Business Metrics
-- **Lead Processing Time**: p95 < 5 seconds (AI inference dominates)
-- **CRM Sync Success Rate**: > 99.9%
-- **Grounding Rejection Rate**: < 5% (hallucination prevention)
-
-### System Metrics
-- **Ingestion Latency**: < 200ms (fast webhook ACK)
-- **Queue Depth**: Alert if > 1000 jobs
-- **Circuit Breaker State**: 0=closed, 1=half-open, 2=open
-
-See [MCP Monitoring](docs/mcp-monitoring.md) for full metric reference and alert rules.
-
----
 
 ## Development Workflow
 

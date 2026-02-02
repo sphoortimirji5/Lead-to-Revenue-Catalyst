@@ -50,3 +50,47 @@ REDIS_URL=          # Empty = uses in-memory fallback for rate limiting/idempote
 | Idempotency | In-memory fallback |
 | Circuit Breaker | Opossum (in-process) |
 | Credentials | None required |
+
+## Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
+- Node.js 18+
+- Gemini API key
+
+### 1. Start Infrastructure
+```bash
+docker-compose up -d
+```
+
+### 2. Install and Configure
+```bash
+npm install
+cp .env.example .env
+# Edit .env with your GEMINI_API_KEY
+```
+
+### 3. Run Application
+```bash
+npm run start:dev
+```
+
+### 4. Test the Flow
+```bash
+curl -X POST http://localhost:3000/leads \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "cto@stripe.com",
+    "name": "Alex Smith",
+    "campaign_id": "launch_2024"
+  }'
+```
+
+### 5. Verify Processing
+```bash
+# Check lead status
+curl http://localhost:3000/leads/1
+
+# View metrics
+curl http://localhost:3000/metrics
+```

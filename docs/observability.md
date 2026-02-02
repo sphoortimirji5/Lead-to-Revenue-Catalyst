@@ -1,17 +1,15 @@
-# Observability Guide - Lead-to-Revenue Catalyst
+# Observability Guide
 
-I implemented a **Unified Telemetry** approach. We use structured JSON logging with automatic PII redaction to stay compliant, but the core of our reliability is **SLO-based alerting**. We monitor the Error Budget Burn Rate of our AI enrichment worker. If our P95 latency for "Executive Stealth" identification crosses 2 seconds, the system triggers a proactive alert before it impacts the sales team's speed-to-lead.
+This document covers logging, metrics, tracing, and alerting for RevenueFlow AI.
 
 ## Service Level Objectives (SLOs)
-
-We track "Golden Signals" to ensure the system meets its production requirements.
 
 | Metric | SLO | Measurement |
 | :--- | :--- | :--- |
 | **Availability** | 99.9% Success | `sum(leads_processed_total{status="success"}) / sum(leads_processed_total)` |
 | **Latency** | P95 < 2s | `ai_analysis_duration_seconds` (histogram) |
 | **Throughput** | > 10 leads/sec | `rate(leads_processed_total[1m])` |
-| **Error Rate** | < 0.1% | `sum(leads_processed_total{status="not_found"}) / sum(leads_processed_total)` |
+| **Error Rate** | < 0.1% | `sum(leads_processed_total{status="error"}) / sum(leads_processed_total)` |
 
 ### Error Budget Burn Rate Alerting
 
@@ -23,7 +21,49 @@ The system uses **multi-window burn rate alerts** to catch SLO violations before
 | **Ticket (Warning)** | 6x | 6h + 30m | Exhausts 30-day budget in 5 days |
 | **Low (Info)** | 1x | 3d + 6h | Trending toward budget exhaustion |
 
-**Example Prometheus Alert Rule:**
+---
+
+## Structured Logging
+
+The application uses `nestjs-pino` for high-performance, structured JSON logging.
+
+| Aspect | Local | Production |
+| :--- | :--- | :--- |
+| **Format** | Pretty-printed (colorized) | Structured JSON |
+| **Destination** | Terminal (stdout) | Loki (via Promtail) |
+| **PII Redaction** | Enabled | Enabled |
+
+---
+
+## Prometheus Metrics
+
+Metrics are exposed at the `/metrics` endpoint.
+
+### Lead Processing Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `leads_processed_total` | Counter | Leads processed by status |
+| `ai_analysis_duration_seconds` | Histogram | AI enrichment latency |
+
+### MCP Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `mcp_actions_total` | Counter | `tool`, `status`, `crm_provider` | MCP actions executed |
+| `mcp_grounding_decisions_total` | Counter | `status` | Grounding decisions (VALID/DOWNGRADED/REJECTED) |
+| `mcp_rate_limit_violations_total` | Counter | `limit_type` | Rate limit violations |
+| `mcp_safety_blocks_total` | Counter | `tool`, `reason` | Actions blocked by safety guard |
+| `mcp_circuit_breaker_state` | Gauge | `crm_provider`, `operation` | CB state (0=closed, 1=half-open, 2=open) |
+| `mcp_action_duration_seconds` | Histogram | `tool`, `crm_provider` | Action latency |
+| `mcp_crm_api_duration_seconds` | Histogram | `crm_provider`, `operation`, `status` | CRM API latency |
+
+---
+
+## Alert Rules
+
+### AI Latency Alerts
+
 ```yaml
 - alert: AIEnrichmentLatencyBudgetBurn
   expr: |
@@ -37,94 +77,71 @@ The system uses **multi-window burn rate alerts** to catch SLO violations before
     severity: page
   annotations:
     summary: "AI Enrichment P95 latency exceeds 2s SLO"
-    description: "The 'Executive Stealth' identification is degrading speed-to-lead."
 ```
 
-## Implementation Details
+### Circuit Breaker Alerts
 
-### 1. Structured Logging
-The application uses `nestjs-pino` for high-performance, structured JSON logging.
-- **Production**: Logs are emitted as JSON for ingestion by **Loki** via Promtail.
-- **Local**: Logs are prettified using `pino-pretty` for readability.
-- **PII Redaction**: Email, Phone, and Password fields are automatically redacted from logs.
+```yaml
+- alert: MCPCircuitBreakerOpen
+  expr: mcp_circuit_breaker_state{} == 2
+  for: 1m
+  labels:
+    severity: critical
+  annotations:
+    summary: "MCP Circuit Breaker OPEN ({{ $labels.crm_provider }})"
+```
 
-### 2. Metrics Collection
-Metrics are exposed via Prometheus format at the `/metrics` endpoint.
-- **Lead Processing**: A counter `leads_processed_total` tracks ingestion and status.
-- **AI Latency**: A histogram `ai_analysis_duration_seconds` tracks how long AI enrichment takes.
+### Grounding Alerts
 
-### 3. Monitoring Access
-- **Logs**: Loki (via Grafana) or stdout locally
-- **Metrics**: `GET /metrics` (Prometheus scrape)
+```yaml
+- alert: MCPHighGroundingRejectionRate
+  expr: |
+    rate(mcp_grounding_decisions_total{status="REJECTED"}[5m]) /
+    rate(mcp_grounding_decisions_total[5m]) > 0.1
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "High grounding rejection rate ({{ $value | humanizePercentage }})"
+```
 
-## Dashboards (Recommended)
-We recommend creating a Grafana dashboard with the following panels:
-1. **Lead Throughput (Total)**: Gauge of processed leads.
-2. **Success/Failure Rate**: Pie chart of lead status.
-3. **AI Latency Distribution**: Heatmap or P95 line chart.
-4. **Active Jobs**: Counter from BullMQ (via Prometheus).
+### Rate Limiting Alerts
+
+```yaml
+- alert: MCPRateLimitViolations
+  expr: rate(mcp_rate_limit_violations_total[5m]) > 10
+  for: 2m
+  labels:
+    severity: warning
+  annotations:
+    summary: "MCP rate limit violations exceeding threshold"
+```
 
 ---
 
-## Local vs Production
+## Grafana Dashboards
 
-| Aspect | Local | Production |
-| :--- | :--- | :--- |
-| **Log Format** | Pretty-printed (colorized) | Structured JSON |
-| **Log Destination** | Terminal (stdout) | **Loki** (via Promtail) |
-| **Metrics Access** | `curl localhost:3000/metrics` | Prometheus scrape target |
-| **PII Redaction** | Enabled | Enabled |
+Recommended panels:
 
-### Local Testing
+| Panel | Type | Query |
+|-------|------|-------|
+| Lead Throughput | Graph | `rate(leads_processed_total[1m]) * 60` |
+| Success Rate | Gauge | `sum(rate(mcp_actions_total{status='success'}[5m])) / sum(rate(mcp_actions_total[5m]))` |
+| AI Latency P95 | Graph | `histogram_quantile(0.95, rate(ai_analysis_duration_seconds_bucket[5m]))` |
+| Circuit Breaker Status | Stat | `mcp_circuit_breaker_state` |
+| Grounding Decisions | Pie Chart | `sum by (status) (mcp_grounding_decisions_total)` |
 
-Follow these steps to verify observability locally:
+---
 
-**1. Start Infrastructure**
+## Local Verification
+
 ```bash
+# Start infrastructure
 docker-compose up -d
-```
 
-**2. Start the Application**
-```bash
+# Start application
 npm run start:dev
+
+# Verify metrics endpoint
+curl http://localhost:3000/metrics | grep -E "leads_processed|mcp_actions"
 ```
-
-**3. Verify Logs**
-Look for structured, prettified output in your terminal:
-```text
-[09:24:56.412] INFO (58814): Processing lead: test@example.com
-    context: "LeadProcessor"
-```
-
-**4. Verify Metrics Endpoint**
-```bash
-curl http://localhost:3000/metrics
-```
-
-**5. Verify Custom Metrics**
-Check that business metrics are being collected:
-```bash
-# Lead processing counter
-curl -s http://localhost:3000/metrics | grep leads_processed_total
-
-# AI latency histogram
-curl -s http://localhost:3000/metrics | grep ai_analysis_duration_seconds
-```
-
-**Expected Output:**
-```text
-# HELP leads_processed_total Total number of leads processed
-# TYPE leads_processed_total counter
-leads_processed_total{status="success"} 5
-
-# HELP ai_analysis_duration_seconds Duration of AI analysis in seconds
-# TYPE ai_analysis_duration_seconds histogram
-ai_analysis_duration_seconds_bucket{le="1"} 3
-ai_analysis_duration_seconds_count 5
-```
-
-**6. Clean Up**
-```bash
-docker-compose down
-```
-
