@@ -73,7 +73,7 @@ flowchart TB
     end
 
     M --> C
-    C --> DB
+    C -->|Idempotency Check| DB
     C --> Q
     Q --> E
     E --> AI
@@ -89,16 +89,23 @@ flowchart TB
     MOCK --> DB
     T -.-> MET
     T -.-> LOG
-    T -.-> DB
+    T -.->|Audit| DB
 ```
 
 ### Data Flow
 
 ```
-Lead Ingestion → Enrichment → AI Analysis → Grounding Validation → MCP Safety → CRM Sync
-     ↑                                                                   ↓
-     └──────────────────── Idempotency Check ←───────────────────────────┘
+Lead Ingestion → Idempotency Check → Enrichment → AI Analysis → Grounding Validation → MCP Safety → CRM Sync
+                      ↓                                              ↓
+                 [DUPLICATE]                                   [HALLUCINATION]
+                Return existing                              Reject + Log to DB
 ```
+
+**Idempotency Key**: `SHA256(email + campaign_id)` - prevents duplicate leads from the same campaign.
+
+**Rejection Points**:
+- **Idempotency Check**: Duplicate leads return the existing record immediately (no queue, no processing)
+- **Grounding Validation**: AI hallucinations are rejected and logged to DB for audit
 
 ### Key Components
 
