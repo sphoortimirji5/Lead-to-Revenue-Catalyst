@@ -44,10 +44,11 @@ The MCP layer connects to real CRM APIs in production with credentials managed b
 ```
 NODE_ENV=production
 CRM_PROVIDER=SALESFORCE
+ENRICHMENT_PROVIDER=CLEARBIT
 DATABASE_URL=postgres://...@mcp-database-prod.xxx.rds.amazonaws.com:5432/revenueflow
 REDIS_URL=redis://mcp-redis-prod.xxx.cache.amazonaws.com:6379
 AWS_REGION=us-west-2
-# CRM and database credentials retrieved from AWS Secrets Manager at runtime
+# CRM, database, and Clearbit credentials retrieved from AWS Secrets Manager at runtime
 ```
 
 | Component | Production Behavior |

@@ -40,6 +40,7 @@ The MCP layer uses mock executors locally to simulate CRM interactions without e
 **Required .env variables:**
 ```
 CRM_PROVIDER=MOCK
+ENRICHMENT_PROVIDER=MOCK
 REDIS_URL=          # Empty = uses in-memory fallback for rate limiting/idempotency
 ```
 
