@@ -37,14 +37,20 @@ The result: AI decisions are auditable, CRM writes are safe, and the pipeline ha
 
 ```mermaid
 flowchart TB
-    subgraph Ingress["Ingress"]
+    subgraph Ingress["External Ingress"]
         M[Marketo Webhook]
     end
 
+    subgraph Infrastructure["AWS Infrastructure"]
+        APIGW[API Gateway<br/>WAF + Throttling]
+        ALB[Application Load Balancer<br/>Health Checks]
+        ECS[Lead Service<br/>ECS Fargate]
+    end
+
     subgraph Pipeline["Lead Processing Pipeline"]
-        C[Webhook Controller<br/>Fast ACK < 200ms]
         Q[BullMQ / Redis<br/>Durable Queue]
-        E[Enrichment Service<br/>Clearbit/ZoomInfo]
+        W[Lead Processor<br/>Worker]
+        E[Enrichment Service<br/>Clearbit]
         AI[AI Analysis<br/>Gemini/Bedrock]
         G[Grounding Validator<br/>Evidence Check]
     end
@@ -67,15 +73,13 @@ flowchart TB
         SF[Salesforce API]
     end
 
-    subgraph Observability["Observability"]
-        MET[Prometheus Metrics]
-        LOG[Structured Logs]
-    end
-
-    M --> C
-    C -->|Idempotency Check| DB
-    C --> Q
-    Q --> E
+    M --> APIGW
+    APIGW --> ALB
+    ALB --> ECS
+    ECS -->|Idempotency Check| DB
+    ECS --> Q
+    Q --> W
+    W --> E
     E --> AI
     AI --> G
     G -->|VALID| S
@@ -87,8 +91,6 @@ flowchart TB
     P -->|Local/Dev| MOCK
     P -->|Production| SF
     MOCK --> DB
-    T -.-> MET
-    T -.-> LOG
     T -.->|Audit| DB
 ```
 

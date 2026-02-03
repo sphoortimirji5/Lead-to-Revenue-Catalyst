@@ -36,11 +36,3 @@ The RevenueFlow AI architecture implements a defense-in-depth security model to 
 - **Least Privilege**: IAM roles for ECS tasks grant minimum necessary permissions (e.g., specific S3 bucket access, specific SSM parameter reads).
 - **No SSH**: Production containers are immutable; no SSH access is permitted. Debugging is performed via observability tools (logs/traces).
 
-## Supply Chain & Compliance
-
-### 1. Dependency Management
-- **Regular Scans**: `npm audit` runs in CI/CD pipelines to block builds with critical vulnerabilities.
-- **Lockfiles**: `package-lock.json` is strictly enforced to ensure deterministic builds.
-
-### 2. Compliance
-- **GDPR/CCPA**: The architecture supports "Right to be Forgotten" via a dedicated purging job that targets a specific `email` hash across Postgres and Redis.
